@@ -5,7 +5,7 @@
     Date Modified : 23  Aug, 2020
 
     --ABOUT--
-        SFTP4j is a java based sftp client developed of SSHJ library. It provides easy CLI interface, similar to default sftp client.
+        SFTP4j is a java based sftp client developed over SSHJ library. It provides easy CLI interface, similar to default sftp client.
         it supports get, put, rm, mkdirs, read, ls, cd, pwd commands.
         All function supports Regular Expressions for filtering files.
         get and put functions can up/dowloading directories.
@@ -33,7 +33,7 @@
             put /deployment/conf/10.0.62.12/other.txt res/conf/other.txt
         } | sftp4j -u user -h 0.0.0.0 -p password
 
-    file should contain only program specific commands like -
+    File should contain only program specific commands like -
 
     get    [source sftp  path] [optional destination local path]
     put    [source local path] [optional destination sftp  path]
