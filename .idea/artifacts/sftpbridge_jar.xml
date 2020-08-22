@@ -1,0 +1,11 @@
+<component name="ArtifactManager">
+  <artifact name="sftpbridge:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/All</output-path>
+    <root id="root">
+      <element id="archive" name="sftpbridge.jar">
+        <element id="module-output" name="sftpBridge" />
+      </element>
+      <element id="library" level="project" name="com.google.code.gson:gson:2.8.6" />
+    </root>
+  </artifact>
+</component>

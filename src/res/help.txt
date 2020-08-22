@@ -1,0 +1,42 @@
+    SFTP4j PROGRAM
+    Author        : Neeraj Malhotra
+    Date Created  : 15 March, 2020
+    Date Modified : 28  July, 2020
+
+    --USAGE--
+        -u <username> -h <hostname> -f <filename> -v
+            -u username [optional] if not passed it will check inside ${DEP_PATH}conf/sftp.conf
+            -h hostname [optional] if not passed it will check inside ${DEP_PATH}conf/sftp.conf
+            -f filename, it will read sftp commands from file.
+            -v verbose mode, it will show all logs.
+
+        or
+
+        <some data stream> | sftp4j -u <username>
+        echo "getf srcfile.txt desfile.txt" | sftp4j sftpUser 127.0.0.1
+
+        {
+            getd /deployment/executor/ res/executor/
+            putd /deployment/scripts/ res/scripts/
+            getf /deployment/scripts_other/10.0.62.12.txt res/file.txt
+            putf /deployment/conf/10.0.62.12/other.txt res/conf/other.txt
+        } | sftp4j user 0.0.0.0 password stdin
+
+    file should contain only program specific commands like -
+
+    getd   [source sftp  path] [optional destination local path]
+    getf   [source sftp  path] [optional destination local path]
+    putd   [source local path] [optional destination sftp  path]
+    putf   [source local path] [optional destination sftp  path]
+    rm     [path]
+    mkdirs [path]
+    readf  [path]
+    lt     [otional path]
+    cd     [path]
+
+    here are some examples -
+    getd /deployment/executor/ res/executor/
+    getf /deployment/scripts_other/10.0.62.12.txt res/file.txt
+    getf file.txt
+    putd /deployment/scripts/ res/scripts/
+    putf /deployment/conf/10.0.62.12/other.txt res/conf/other.txt

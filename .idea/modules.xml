@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/../NBService/NBService.iml" filepath="$PROJECT_DIR$/../NBService/NBService.iml" />
+      <module fileurl="file://$PROJECT_DIR$/SFTP4j.iml" filepath="$PROJECT_DIR$/SFTP4j.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../configProvider/configProvider.iml" filepath="$PROJECT_DIR$/../configProvider/configProvider.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../pathMapping/pathMapping.iml" filepath="$PROJECT_DIR$/../pathMapping/pathMapping.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../sftpBridge/sftpBridge.iml" filepath="$PROJECT_DIR$/../sftpBridge/sftpBridge.iml" />
+    </modules>
+  </component>
+</project>

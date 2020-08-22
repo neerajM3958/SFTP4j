@@ -1,0 +1,6 @@
+Manifest-Version: 1.0
+Class-Path: sshj-0.27.0.jar slf4j-api-1.7.7.jar bcprov-jdk15on-1.60.ja
+ r bcpkix-jdk15on-1.60.jar jzlib-1.1.3.jar eddsa-0.2.0.jar configProvi
+ der.jar logger.jar
+Main-Class: neerajm.sftp4j.SFTP4jCLI
+
