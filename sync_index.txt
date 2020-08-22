@@ -1,2 +1,0 @@
-getd /deployment/scripts/ scripts/
-getf /deployment/executor.sh executor.sh
