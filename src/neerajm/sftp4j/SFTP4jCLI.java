@@ -10,7 +10,7 @@ import java.util.Scanner;
 
 public class SFTP4jCLI implements Closeable{
     private String user, host, password, commandFile;
-    private boolean verbose = false;
+    private boolean verbose = false, savePassword = false, ignoreDefaultUser = false, disableInputs = false;
     private SFTP4j mSftp4j;
     private Logger logger;
     private ConfigProvider configProvider = new ConfigProvider();
@@ -30,8 +30,14 @@ public class SFTP4jCLI implements Closeable{
                 host = p.substring(2).trim();
             else if (p.startsWith("f "))
                 commandFile = p.substring(2).trim();
-            else if (p.startsWith("v "))
+            else if (p.startsWith("v"))
                 verbose = true;
+            else if (p.startsWith("s"))
+                savePassword = true;
+            else if (p.startsWith("i"))
+                ignoreDefaultUser = true;
+            else if (p.startsWith("q"))
+                disableInputs = true;
             else if (!p.isEmpty()) {
                 help();
             }
@@ -52,8 +58,10 @@ public class SFTP4jCLI implements Closeable{
 
     private void connect() {
         if (user == null) user = getMissingParams("Please enter sftp username.", false, SFTP4j.CONFIG_KEY_USER);
-        if (host == null) host = getMissingParams("Please enter sftp hostname.", false, SFTP4j.CONFIG_KEY_HOST);
-        if (password == null) password = getMissingParams("Please enter sftp password for user : " + user, true, user);
+        if (host == null)
+            host = getMissingParams("Please enter sftp hostname for user - " + user, false, SFTP4j.getConfigKeyHost(user));
+        if (password == null)
+            password = getMissingParams("Please enter sftp password for user - " + user, true, SFTP4j.getConfigKeyPassword(user));
         try {
             mSftp4j = new SFTP4j(user, host, password, logger);
         } catch (IOException e) {
@@ -65,11 +73,14 @@ public class SFTP4jCLI implements Closeable{
     private String getMissingParams(String msg, boolean hidden, String key) {
         String value;
         try {
+            if (ignoreDefaultUser) throw new IOException();
             value = configProvider.getConfig(key, hidden);
         } catch (Exception e) {
             value = readInput(msg, hidden);
             try {
-                configProvider.setConfig(SFTP4j.CONFIG_FILE_SFTP, key, value, hidden);
+                if (savePassword) {
+                    configProvider.setConfig(SFTP4j.CONFIG_FILE_SFTP, key, value, hidden);
+                }
             } catch (IOException e1) {
                 logger.error("SFTP4j : unable to save sftp configs.", e);
             }
@@ -78,6 +89,10 @@ public class SFTP4jCLI implements Closeable{
     }
 
     public String readInput(String msg, boolean hidden) {
+        if (disableInputs) {
+            logger.error(msg + " ###Input is disabled.###");
+            return "";
+        }
         Console console = System.console();
         System.out.println(msg);
         if (console == null) {

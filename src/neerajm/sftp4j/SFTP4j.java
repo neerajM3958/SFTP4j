@@ -16,7 +16,7 @@ import java.util.*;
 import java.util.regex.Matcher;
 
 public class SFTP4j implements Closeable{
-    public static final String CONFIG_FILE_SFTP = "sftp4j.conf", CONFIG_KEY_USER = "sftp_user", CONFIG_KEY_HOST = "sftp_host";
+    public static final String CONFIG_FILE_SFTP = "sftp4j.conf", CONFIG_KEY_USER = "sftp_user";
     private SSHClient mClient;
     private SFTPClient mSftpClient;
     public static final String COMMAND_GET = "get",
@@ -26,7 +26,8 @@ public class SFTP4j implements Closeable{
             COMMAND_READ = "read",
             COMMAND_LS = "ls",
             COMMAND_CD = "cd",
-            COMMAND_PWD = "pwd";
+            COMMAND_PWD = "pwd",
+            COMMAND_HELP = "help";
     private final String pathSeprator = File.separator;
     private String cd = pathSeprator;
     public static final String TYPE_DIRECTORY = "DIRECTORY";
@@ -35,13 +36,21 @@ public class SFTP4j implements Closeable{
     public SFTP4j(Logger logger) throws IOException {
         ConfigProvider configProvider = new ConfigProvider(CONFIG_FILE_SFTP);
         String user = configProvider.getConfig(CONFIG_KEY_USER);
-        String host = configProvider.getConfig(CONFIG_KEY_HOST);
-        String password = configProvider.getConfig(user);
+        String host = configProvider.getConfig(getConfigKeyHost(user));
+        String password = configProvider.getConfig(getConfigKeyPassword(user));
         init(user, host, password, logger);
     }
 
     public SFTP4j(String user, String host, String password, Logger logger) throws IOException {
         init(user, host, password, logger);
+    }
+
+    public static String getConfigKeyHost(String user) {
+        return String.format("%s_hostname", user);
+    }
+
+    public static String getConfigKeyPassword(String user) {
+        return String.format("%s_enc_pwd", user);
     }
 
     private void init(String user, String host, String password, Logger logger) throws IOException {
@@ -50,7 +59,7 @@ public class SFTP4j implements Closeable{
         defaultConfig.setKeepAliveProvider(KeepAliveProvider.KEEP_ALIVE);
         mClient = new SSHClient();
         mClient.addHostKeyVerifier(new PromiscuousVerifier());
-        mClient.setConnectTimeout(4000);
+        mClient.setConnectTimeout(10000);
         mClient.connect(host);
         mClient.getConnection().getKeepAlive().setKeepAliveInterval(5); //every 60sec
         mClient.authPassword(user, password);
@@ -74,8 +83,15 @@ public class SFTP4j implements Closeable{
 
     }
 
-    private String trimPath(String path, String... more){
-        return Paths.get(path, more).normalize().toString();
+    private String trimPath(String... paths) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < paths.length; i++) {
+            String p = paths[i];
+            if (p.isEmpty()) continue;
+            sb.append(p);
+            if (sb.length() > 0 && i < paths.length - 1) sb.append(pathSeprator);
+        }
+        return sb.toString().replaceAll("[\\\\/]+", Matcher.quoteReplacement(pathSeprator));
     }
 
     public boolean isDir(String path) throws IOException {
@@ -110,18 +126,21 @@ public class SFTP4j implements Closeable{
         } else mLogger.error("Can't able to create base path of file - " + des, new IOException());
     }
 
-    public void get(String src, String des) throws IOException {
+    public void get(String src, String re, String des) throws IOException {
         src = trimPath(src);
         des = trimPath(des);
-        if (!isDir(src)) {
-            getf(src, des);
-            return;
-        }
-        List<RemoteResourceInfo> files = ls(src);
+        if (des.isEmpty()) des = "." + pathSeprator;
+        final String regex = re.isEmpty() ? ".*" : re;
+        List<RemoteResourceInfo> files = ls(src, regex);
         for (RemoteResourceInfo rri : files) {
+            String ts = trimPath(rri.getPath()), td;
             if (!rri.isDirectory()) {
-                getf(rri.getPath(), des + "/" + rri.getName());
-            } else get(rri.getPath(), trimPath(des, rri.getPath().substring(src.length())));
+                td = trimPath(des, rri.getName());
+                getf(ts, td);
+            } else {
+                td = trimPath(des, rri.getPath().substring(src.length()));
+                get(ts, "", td);
+            }
         }
     }
 
@@ -131,20 +150,21 @@ public class SFTP4j implements Closeable{
         mLogger.info(String.format("putf %s %s\n", src, des));
         if (mSftpClient.statExistence(des) != null)
             mSftpClient.rm(des);
-        //else mkdirs(Paths.get(des).getParent().toString());
         mSftpClient.put(src, des);
     }
 
-    public void put(String src, String des) throws IOException {
+    public void put(String src, String re, String des) throws IOException {
         src = src.trim();
         des = des.trim();
+        if (src.isEmpty()) src = "." + pathSeprator;
         File src_file = new File(src);
-        if (!src_file.isDirectory()) {
-            putf(src, des);
-            return;
-        }
-        //mkdirs(Paths.get(trimPath(des, src_file.getPath().substring(src.length()))).getParent().toString());
-        File[] files = src_file.listFiles();
+        final String regex = re.isEmpty() ? ".*" : re;
+        File[] files = src_file.listFiles(new FilenameFilter() {
+            @Override
+            public boolean accept(File dir, String name) {
+                return name.matches(regex);
+            }
+        });
         if (files != null) {
             String ts,td;
             for (File file : files) {
@@ -154,25 +174,26 @@ public class SFTP4j implements Closeable{
                     mkdirs(Paths.get(td).getParent().toString());
                     putf(ts,td);
                 } else {
-                    put(ts,td);
+                    put(ts, "", td);
                 }
             }
         }
 
     }
 
-    public void rm(String path) throws IOException {
+    public void rm(String path, String re) throws IOException {
         if (mSftpClient.statExistence(path) != null) {
-            if (!mSftpClient.type(path).name().equals(TYPE_DIRECTORY)) {
-                mSftpClient.rm(path);
-            } else {
-                List<RemoteResourceInfo> list = mSftpClient.ls(path);
-                for (RemoteResourceInfo rri : list) {
-                    rm(rri.getPath());
+            final String regex = re.isEmpty() ? ".*" : re;
+            List<RemoteResourceInfo> list = ls(path, regex);
+            for (RemoteResourceInfo rri : list) {
+                if (!rri.isDirectory()) {
+                    mSftpClient.rm(rri.getPath());
+                } else {
+                    rm(rri.getPath(), "");
+                    mSftpClient.rmdir(path);
                 }
-                mSftpClient.rmdir(path);
-                mLogger.info(path + " removed.");
             }
+            mLogger.info(path + " removed.");
         } else {
             mLogger.error("SFTP4j : rm - " + path + " doesn't exist.", new IOException());
         }
@@ -205,7 +226,6 @@ public class SFTP4j implements Closeable{
                 openmode.add(OpenMode.TRUNC);
             RemoteFile rfile = mSftpClient.open(path, openmode);
             RemoteFile.RemoteFileOutputStream rsos = rfile.new RemoteFileOutputStream();
-            //        rsos.write(data.getBytes());
             byte[] buff = data.getBytes();
             rfile.write(rfile.length(), buff, 0, buff.length);
             rsos.close();
@@ -241,7 +261,7 @@ public class SFTP4j implements Closeable{
         });
     }
 
-    private String lsString(String path, String regex) throws IOException {
+    private String lsString(String path, String regex) {
         path = path.isEmpty() ? "/" : path;
         StringBuilder sb = new StringBuilder();
         try{
@@ -272,39 +292,32 @@ public class SFTP4j implements Closeable{
     public void exec(String[] args) throws IOException {
         String out;
         for(int i=0;i<args.length;i++) args[i] = args[i].replaceAll("[\"']","");
-        String src = args.length>= 2 ? args[1].replaceAll("[\\\\/]+",Matcher.quoteReplacement(pathSeprator) ) : "";
-        String des = args.length>= 3 ? args[2].replaceAll("[\\\\/]+",Matcher.quoteReplacement(pathSeprator) ) : "";
-        if (args[0].equals(COMMAND_GET) || args[0].equals(COMMAND_PUT)) {
-            if(des.isEmpty())
-                des = Paths.get(args[1]).getFileName().toString();
-            else if (des.endsWith(pathSeprator) && !Paths.get(src).getFileName().equals(Paths.get(des).getFileName())){
-                des = Paths.get(des,Paths.get(src).getFileName().toString()).toString();
-            }
+        String src = args.length >= 2 ? trimPath(args[1]) : "";
+        String des = args.length >= 3 ? trimPath(args[2]) : "";
+        String path = src, regex = "";
+        if (!src.isEmpty()) {
+            int in = src.lastIndexOf(pathSeprator) + 1;
+            path = src.substring(0, in);
+            regex = src.substring(in).replaceAll(";", Matcher.quoteReplacement("\\"));
         }
         switch (args[0]) {
             case COMMAND_GET: // src des
-                get(appendPath(src), des);
+                get(appendPath(path), regex, des);
                 break;
             case COMMAND_PUT: // src des
-                put(src, appendPath(des));
+                put(path, regex, appendPath(des));
                 break;
             case COMMAND_MKDIRS: // src
                 mkdirs(appendPath(src));
                 break;
             case COMMAND_RM: // src
-                rm(appendPath(src));
+                rm(appendPath(path), regex);
                 break;
             case COMMAND_READ: // src
                 out = readf(appendPath(src));
                 System.out.println(out);
                 break;
             case COMMAND_LS: //src
-                String path = src , regex = "";
-                if(!src.isEmpty()){
-                    int in = src.lastIndexOf(pathSeprator) + 1;
-                    path = src.substring(0, in);
-                    regex = src.substring(in);
-                }
                 out = lsString(appendPath(path),regex);
                 System.out.println(out);
                 break;
@@ -323,13 +336,16 @@ public class SFTP4j implements Closeable{
             case COMMAND_PWD:
                 System.out.println(cd);
                 break;
+            case COMMAND_HELP:
+                SFTP4jCLI.help();
+                break;
             default:
                 StringBuilder sb = new StringBuilder();
                 for (String s : args) {
                     sb.append(s).append(" ");
                 }
                 mLogger.error("Invalid input to exec - " + sb.toString());
-                SFTP4jCLI.help();
+                mLogger.error("type help for usage information.");
         }
     }
 
