@@ -4,7 +4,6 @@ logs
 out
 logback_nbservice.xml
 logback_sftp_bridge.xml
-SFTP4j.iml
 syncsftp.properties
 sync_index.txt
 Test.java
