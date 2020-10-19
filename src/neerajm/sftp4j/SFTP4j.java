@@ -34,7 +34,7 @@ public class SFTP4j implements Closeable{
     private Logger mLogger;
 
     public SFTP4j(Logger logger) throws IOException {
-        ConfigProvider configProvider = new ConfigProvider(CONFIG_FILE_SFTP);
+        ConfigProvider configProvider = new ConfigProvider().load(CONFIG_FILE_SFTP);
         String user = configProvider.getConfig(CONFIG_KEY_USER);
         String host = configProvider.getConfig(getConfigKeyHost(user));
         String password = configProvider.getConfig(getConfigKeyPassword(user));
@@ -46,11 +46,11 @@ public class SFTP4j implements Closeable{
     }
 
     public static String getConfigKeyHost(String user) {
-        return String.format("%s_hostname", user);
+        return String.format("%s_host", user);
     }
 
     public static String getConfigKeyPassword(String user) {
-        return String.format("%s_enc_pwd", user);
+        return String.format("%s_pwd", user);
     }
 
     private void init(String user, String host, String password, Logger logger) throws IOException {
@@ -59,12 +59,25 @@ public class SFTP4j implements Closeable{
         defaultConfig.setKeepAliveProvider(KeepAliveProvider.KEEP_ALIVE);
         mClient = new SSHClient();
         mClient.addHostKeyVerifier(new PromiscuousVerifier());
-        mClient.setConnectTimeout(10000);
+        mClient.setConnectTimeout(5000);
         mClient.connect(host);
         mClient.getConnection().getKeepAlive().setKeepAliveInterval(5); //every 60sec
         mClient.authPassword(user, password);
         mSftpClient = mClient.newSFTPClient();
         mLogger.info("connection established.");
+        Timer timer = new Timer();
+        timer.schedule(new TimerTask() {
+            @Override
+            public void run() {
+                try {
+                    writef("/.sftp4j_dummy_file","",true);
+
+                } catch (IOException e) {
+                    this.cancel();
+                }
+            }
+        }, 0, 5000);
+
     }
 
     public SFTPClient getSftpClient() {

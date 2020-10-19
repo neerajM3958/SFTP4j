@@ -2,51 +2,75 @@ package neerajm.sftp4j;
 
 import ch.qos.logback.classic.Level;
 import ch.qos.logback.classic.Logger;
+import neerajm.cli.CLI;
 import neerajm.configprovider.ConfigProvider;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.util.ArrayList;
 import java.util.Scanner;
 
-public class SFTP4jCLI implements Closeable{
+public class SFTP4jCLI extends CLI implements Closeable{
     private String user, host, password, commandFile;
     private boolean verbose = false, savePassword = false, ignoreDefaultUser = false, disableInputs = false;
     private SFTP4j mSftp4j;
     private Logger logger;
     private ConfigProvider configProvider = new ConfigProvider();
 
-    public SFTP4jCLI(String[] args) throws IOException {
-        StringBuilder temp = new StringBuilder();
-        for (String s : args)
-            temp.append(" ").append(s);
-        args = temp.toString().split("-");
-        for (String p : args) {
-            p = p.trim();
-            if (p.startsWith("u "))
-                user = p.substring(2).trim();
-            else if (p.startsWith("p "))
-                password = p.substring(2).trim();
-            else if (p.startsWith("h "))
-                host = p.substring(2).trim();
-            else if (p.startsWith("f "))
-                commandFile = p.substring(2).trim();
-            else if (p.startsWith("v"))
-                verbose = true;
-            else if (p.startsWith("s"))
-                savePassword = true;
-            else if (p.startsWith("i"))
-                ignoreDefaultUser = true;
-            else if (p.startsWith("q"))
-                disableInputs = true;
-            else if (!p.isEmpty()) {
-                help();
+    @Override
+    public boolean opts(String arg, ArrayList<String> value) {
+        try{
+            switch (arg){
+                case "u":
+                case "user":
+                    user = value.get(0);
+                    break;
+                case "p":
+                case "password":
+                    password=value.get(0);
+                    break;
+                case "h":
+                case "host":
+                    host=value.get(0);
+                    break;
+                case "f":
+                case "file":
+                    commandFile = value.get(0);
+                    break;
+                case "v":
+                case "verbose":
+                    verbose = true;
+                    break;
+                case "s":
+                case "save":
+                    savePassword = true;
+                    break;
+                case "i":
+                case "ignore":
+                    ignoreDefaultUser = true;
+                    break;
+                case "q":
+                case "quiet":
+                    disableInputs=true;
+                    break;
+                default:
+                    return false;
             }
+        }catch (Exception e){
+            logger.error("Invalid arguements, please look help");
+            logger.debug(e.getMessage(),e);
+            return false;
         }
+        return true;
+    }
 
+    public SFTP4jCLI(String[] args) throws IOException {
         logger = (Logger) LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME);
+        logger.setLevel(Level.ERROR);
+        parseArgs(args);
+
         if (verbose) logger.setLevel(Level.INFO);
         else logger.setLevel(Level.ERROR);
-
 
         try {
             configProvider.load(SFTP4j.CONFIG_FILE_SFTP);
@@ -57,7 +81,8 @@ public class SFTP4jCLI implements Closeable{
     }
 
     private void connect() {
-        if (user == null) user = getMissingParams("Please enter sftp username.", false, SFTP4j.CONFIG_KEY_USER);
+        if (user == null)
+            user = getMissingParams("Please enter sftp username.", false, SFTP4j.CONFIG_KEY_USER);
         if (host == null)
             host = getMissingParams("Please enter sftp hostname for user - " + user, false, SFTP4j.getConfigKeyHost(user));
         if (password == null)
@@ -74,7 +99,7 @@ public class SFTP4jCLI implements Closeable{
         String value;
         try {
             if (ignoreDefaultUser) throw new IOException();
-            value = configProvider.getConfig(key, hidden);
+            value = configProvider.getConfig(key);
         } catch (Exception e) {
             value = readInput(msg, hidden);
             try {
@@ -119,25 +144,13 @@ public class SFTP4jCLI implements Closeable{
             String line = sc.nextLine();
             if (line.equals("bye")) break;
             try {
-                line = line.replaceAll("[\\s]+"," ");
-                mSftp4j.exec(line.split(" "));
+                line = line.replaceAll("[\\s]+"," ").trim();
+                if(!line.isEmpty())
+                    mSftp4j.exec(line.split(" "));
             } catch (Exception e) {
                 logger.error("SFTP4j : Can't execute that command.", e);
             }
             System.out.print("SFTP4j:" + mSftp4j.getCd() + ">");
-        }
-    }
-
-    public static void help() {
-        try {
-            InputStream in = SFTP4j.class.getClassLoader().getResourceAsStream("res/help.txt");
-            BufferedReader br = new BufferedReader(new InputStreamReader(in));
-            String line;
-            while ((line = br.readLine()) != null) {
-                System.out.println(line);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
         }
     }
 
