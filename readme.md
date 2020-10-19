@@ -2,7 +2,7 @@
     Description   : Java based sftp client which provide CLI control as well as programmable interface.
     Author        : Neeraj Malhotra
     Date Created  : 15 March, 2020
-    Date Modified : 23  Aug, 2020
+    Date Modified : 19 Oct, 2020
 
     ---ABOUT---
         SFTP4j is a java based sftp client developed over SSHJ library. It provides easy CLI interface, similar to default sftp client.
@@ -66,7 +66,7 @@
 
     bye
         - Exits from SFTP4j program.
-        
+
     help
         - show programs manual
 
