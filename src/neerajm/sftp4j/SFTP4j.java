@@ -7,6 +7,8 @@ import net.schmizz.sshj.DefaultConfig;
 import net.schmizz.sshj.SSHClient;
 import net.schmizz.sshj.sftp.*;
 import net.schmizz.sshj.transport.verification.PromiscuousVerifier;
+import org.slf4j.ILoggerFactory;
+import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.nio.file.Path;
@@ -17,6 +19,7 @@ import java.util.regex.Matcher;
 
 public class SFTP4j implements Closeable{
     public static final String CONFIG_FILE_SFTP = "sftp4j.conf", CONFIG_KEY_USER = "sftp_user";
+    public static final String LOGGER_NAME="SFTP4j";
     private SSHClient mClient;
     private SFTPClient mSftpClient;
     public static final String COMMAND_GET = "get",
@@ -32,17 +35,18 @@ public class SFTP4j implements Closeable{
     private String cd = pathSeprator;
     public static final String TYPE_DIRECTORY = "DIRECTORY";
     private Logger mLogger;
+    private String mUser, mPassword, mHost;
 
-    public SFTP4j(Logger logger) throws IOException {
+    public SFTP4j() throws IOException {
         ConfigProvider configProvider = new ConfigProvider().load(CONFIG_FILE_SFTP);
         String user = configProvider.getConfig(CONFIG_KEY_USER);
         String host = configProvider.getConfig(getConfigKeyHost(user));
         String password = configProvider.getConfig(getConfigKeyPassword(user));
-        init(user, host, password, logger);
+        init(user, host, password);
     }
 
-    public SFTP4j(String user, String host, String password, Logger logger) throws IOException {
-        init(user, host, password, logger);
+    public SFTP4j(String user, String host, String password) throws IOException {
+        init(user, host, password);
     }
 
     public static String getConfigKeyHost(String user) {
@@ -53,18 +57,14 @@ public class SFTP4j implements Closeable{
         return String.format("%s_pwd", user);
     }
 
-    private void init(String user, String host, String password, Logger logger) throws IOException {
-        mLogger = logger;
+    private void init(String user, String host, String password) throws IOException {
+        mLogger = (Logger) LoggerFactory.getLogger(LOGGER_NAME);
+        mUser = user;
+        mHost = host;
+        mPassword = password;
         DefaultConfig defaultConfig = new DefaultConfig();
         defaultConfig.setKeepAliveProvider(KeepAliveProvider.KEEP_ALIVE);
-        mClient = new SSHClient();
-        mClient.addHostKeyVerifier(new PromiscuousVerifier());
-        mClient.setConnectTimeout(5000);
-        mClient.connect(host);
-        mClient.getConnection().getKeepAlive().setKeepAliveInterval(5); //every 60sec
-        mClient.authPassword(user, password);
-        mSftpClient = mClient.newSFTPClient();
-        mLogger.info("connection established.");
+        reconnect();
         Timer timer = new Timer();
         timer.schedule(new TimerTask() {
             @Override
@@ -78,6 +78,20 @@ public class SFTP4j implements Closeable{
             }
         }, 0, 5000);
 
+    }
+
+    public SFTP4j reconnect() throws IOException {
+        if(mClient==null || !mClient.isConnected()){
+            mClient = new SSHClient();
+            mClient.addHostKeyVerifier(new PromiscuousVerifier());
+            mClient.setConnectTimeout(5000);
+            mClient.connect(mHost);
+            mClient.getConnection().getKeepAlive().setKeepAliveInterval(5); //every 60sec
+            mClient.authPassword(mUser, mPassword);
+            mSftpClient = mClient.newSFTPClient();
+            mLogger.info("connection established.");
+        }
+        return this;
     }
 
     public SFTPClient getSftpClient() {
@@ -145,14 +159,19 @@ public class SFTP4j implements Closeable{
         if (des.isEmpty()) des = "." + pathSeprator;
         final String regex = re.isEmpty() ? ".*" : re;
         List<RemoteResourceInfo> files = ls(src, regex);
-        for (RemoteResourceInfo rri : files) {
-            String ts = trimPath(rri.getPath()), td;
-            if (!rri.isDirectory()) {
-                td = trimPath(des, rri.getName());
-                getf(ts, td);
-            } else {
-                td = trimPath(des, rri.getPath().substring(src.length()));
-                get(ts, "", td);
+        if(files.size()==0){
+            mLogger.error(String.format("file doesn't exists :  %s,%s", src, regex));
+        }
+        else{
+            for (RemoteResourceInfo rri : files) {
+                String ts = trimPath(rri.getPath()), td;
+                if (rri.isDirectory()) {
+                    td = trimPath(des, rri.getPath().substring(src.length()));
+                    get(ts, "", td);
+                } else {
+                    td = trimPath(des, rri.getName());
+                    getf(ts, td);
+                }
             }
         }
     }
@@ -178,7 +197,10 @@ public class SFTP4j implements Closeable{
                 return name.matches(regex);
             }
         });
-        if (files != null) {
+        if (files == null || files.length==0) {
+            mLogger.error(String.format("file doesn't exists :  %s,%s", src, regex));
+        }
+        else {
             String ts,td;
             for (File file : files) {
                 ts = file.getPath();
@@ -191,25 +213,29 @@ public class SFTP4j implements Closeable{
                 }
             }
         }
-
     }
 
-    public void rm(String path, String re) throws IOException {
+    public boolean rm(String path, String re) throws IOException {
         if (mSftpClient.statExistence(path) != null) {
             final String regex = re.isEmpty() ? ".*" : re;
             List<RemoteResourceInfo> list = ls(path, regex);
-            for (RemoteResourceInfo rri : list) {
-                if (!rri.isDirectory()) {
-                    mSftpClient.rm(rri.getPath());
-                } else {
-                    rm(rri.getPath(), "");
-                    mSftpClient.rmdir(path);
+            if(list!=null && list.size()>0){
+                for (RemoteResourceInfo rri : list) {
+                    if (!rri.isDirectory()) {
+                        mSftpClient.rm(rri.getPath());
+                    } else {
+                        rm(rri.getPath(), "");
+                        if(ls(rri.getPath()).size()==0)
+                            mSftpClient.rmdir(rri.getPath());
+                    }
                 }
+                mLogger.info( String.format("files removed at path [%s, %s]", path, regex));
+                return true;
             }
-            mLogger.info(path + " removed.");
         } else {
             mLogger.error("SFTP4j : rm - " + path + " doesn't exist.", new IOException());
         }
+        return false;
     }
 
     public String readf(String path) throws IOException {
@@ -315,16 +341,26 @@ public class SFTP4j implements Closeable{
         }
         switch (args[0]) {
             case COMMAND_GET: // src des
-                get(appendPath(path), regex, des);
+                if(regex.length()==0){
+                   mLogger.error("get command need argument : [src path/name/regex], [des path]");
+                }
+                else get(appendPath(path), regex, des);
                 break;
             case COMMAND_PUT: // src des
-                put(path, regex, appendPath(des));
+                if(regex.length()==0){
+                    mLogger.error("put command need argument : [src path/name/regex], [des path]");
+                }
+                else put(path, regex, appendPath(des));
                 break;
             case COMMAND_MKDIRS: // src
                 mkdirs(appendPath(src));
                 break;
             case COMMAND_RM: // src
-                rm(appendPath(path), regex);
+                if(regex.length()==0){
+                mLogger.error("rm command need argument : [src path/name/regex]");
+                }else if(!rm(appendPath(path), regex)){
+                    mLogger.error(String.format("SFTP4j : rm - [%s, %s] doesn't exist.",path, regex));
+                }
                 break;
             case COMMAND_READ: // src
                 out = readf(appendPath(src));

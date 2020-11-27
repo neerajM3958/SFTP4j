@@ -14,7 +14,7 @@ public class SFTP4jCLI extends CLI implements Closeable{
     private String user, host, password, commandFile;
     private boolean verbose = false, savePassword = false, ignoreDefaultUser = false, disableInputs = false;
     private SFTP4j mSftp4j;
-    private Logger logger;
+    final private Logger logger;
     private ConfigProvider configProvider = new ConfigProvider();
 
     @Override
@@ -65,11 +65,16 @@ public class SFTP4jCLI extends CLI implements Closeable{
     }
 
     public SFTP4jCLI(String[] args) throws IOException {
-        logger = (Logger) LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME);
-        logger.setLevel(Level.ERROR);
+
+        Logger rootLogger = (Logger) LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME);
+        rootLogger.setLevel(Level.ERROR);
+
+        logger = (Logger) LoggerFactory.getLogger(SFTP4j.LOGGER_NAME);
+        //logger.setLevel(Level.ERROR);
+
         parseArgs(args);
 
-        if (verbose) logger.setLevel(Level.INFO);
+        if (verbose) logger.setLevel(Level.DEBUG);
         else logger.setLevel(Level.ERROR);
 
         try {
@@ -88,11 +93,14 @@ public class SFTP4jCLI extends CLI implements Closeable{
         if (password == null)
             password = getMissingParams("Please enter sftp password for user - " + user, true, SFTP4j.getConfigKeyPassword(user));
         try {
-            mSftp4j = new SFTP4j(user, host, password, logger);
+            mSftp4j = new SFTP4j(user, host, password);
         } catch (IOException e) {
             logger.error("SFTP4j : Failed to connect.", e);
             System.exit(1);
         }
+        updateConfig(SFTP4j.CONFIG_KEY_USER,user,false);
+        updateConfig(SFTP4j.getConfigKeyHost(user),host,false);
+        if(savePassword) updateConfig(SFTP4j.getConfigKeyPassword(user),password,false);
     }
 
     private String getMissingParams(String msg, boolean hidden, String key) {
@@ -101,16 +109,19 @@ public class SFTP4jCLI extends CLI implements Closeable{
             if (ignoreDefaultUser) throw new IOException();
             value = configProvider.getConfig(key);
         } catch (Exception e) {
+            logger.debug("config key not found - " + key);
             value = readInput(msg, hidden);
-            try {
-                if (savePassword) {
-                    configProvider.setConfig(SFTP4j.CONFIG_FILE_SFTP, key, value, hidden);
-                }
-            } catch (IOException e1) {
-                logger.error("SFTP4j : unable to save sftp configs.", e);
-            }
+            //updateConfig(key,value, hidden);
         }
         return value;
+    }
+
+    private void updateConfig(String key, String value, boolean hidden){
+        try {
+            configProvider.setConfig(SFTP4j.CONFIG_FILE_SFTP, key, value, hidden);
+        } catch (IOException e1) {
+            logger.error("SFTP4j : unable to save sftp configs.", e1);
+        }
     }
 
     public String readInput(String msg, boolean hidden) {
@@ -146,7 +157,7 @@ public class SFTP4jCLI extends CLI implements Closeable{
             try {
                 line = line.replaceAll("[\\s]+"," ").trim();
                 if(!line.isEmpty())
-                    mSftp4j.exec(line.split(" "));
+                    mSftp4j.reconnect().exec(line.split(" "));
             } catch (Exception e) {
                 logger.error("SFTP4j : Can't execute that command.", e);
             }
