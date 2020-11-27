@@ -7,7 +7,6 @@ import net.schmizz.sshj.DefaultConfig;
 import net.schmizz.sshj.SSHClient;
 import net.schmizz.sshj.sftp.*;
 import net.schmizz.sshj.transport.verification.PromiscuousVerifier;
-import org.slf4j.ILoggerFactory;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
